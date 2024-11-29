@@ -1,0 +1,54 @@
+```{r}
+data <- read.csv("diabetes_012_health_indicators_BRFSS2015.csv")
+
+library(dplyr)
+data_bad_MH <- data |> 
+  filter(MentHlth > 15) # Focus on groups with poor mental health
+
+data_no_HC <- data_bad_MH |> 
+  filter(AnyHealthcare == 1) |> 
+  select(-AnyHealthcare)# Compare with having HC
+
+data_HC <- data_bad_MH |> 
+  filter(AnyHealthcare == 0) |> 
+  select(-AnyHealthcare)
+```
+
+```{r}
+# Load necessary libraries
+library(poLCA)
+
+# Load the data
+data <- read.csv("diabetes_012_health_indicators_BRFSS2015.csv")
+
+# Select variables for LCA (categorical or ordinal variables only)
+lca_data <- data[, c("HighBP", "HighChol", "Smoker", "Stroke", 
+                     "HeartDiseaseorAttack", "PhysActivity", "Fruits", 
+                     "Veggies", "GenHlth", "DiffWalk")]
+
+# Ensure all variables are treated as factors
+lca_data <- lapply(lca_data, as.factor)
+lca_data <- as.data.frame(lca_data)
+
+# Run LCA for models with 1 to 5 classes
+set.seed(123)
+results <- list()
+bic_values <- c()
+
+for (k in 1:5) {
+  lca_model <- poLCA(cbind(HighBP, HighChol, Smoker, Stroke, HeartDiseaseorAttack, 
+                           PhysActivity, Fruits, Veggies, GenHlth, DiffWalk) ~ 1, 
+                     data = lca_data, nclass = k, maxiter = 1000, 
+                     nrep = 10, verbose = FALSE)
+  results[[k]] <- lca_model
+  bic_values <- c(bic_values, lca_model$bic)
+}
+
+# Plot BIC values to determine the optimal number of classes
+plot(1:5, bic_values, type = "b", xlab = "Number of Classes", ylab = "BIC", 
+     main = "Model Selection using BIC")
+
+```
+
+
+

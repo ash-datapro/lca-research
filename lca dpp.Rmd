@@ -1,0 +1,331 @@
+---
+title: "432Project"
+output: pdf_document
+date: "2024-11-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**0, descriptive statistics, missing values, outliers**
+
+```{r}
+data <- read.csv("diabetes_012_health_indicators_BRFSS2015.csv")
+```
+
+```{r}
+library(dplyr)
+data_bad_MH <- data |> 
+  filter(MentHlth > 15) # Focus on groups with poor mental health
+```
+
+```{r}
+# Check for missing values in each column
+missing_values <- sapply(data_bad_MH, function(x) anyNA(x))
+missing_values
+```
+
+There is no missing values
+
+summary for non 0/1 variables: 
+
+```{r}
+summary(data_bad_MH[,c(  "BMI","MentHlth","PhysHlth","Age","Education","Income")])
+```
+
+Consider BMI for outliers: 
+
+```{r}
+hist(data_bad_MH$BMI, 
+     breaks = 30, 
+     col = "lightblue", 
+     border = "black",
+     main = "Distribution of BMI", 
+     xlab = "BMI", 
+     ylab = "Frequency",
+     cex.main = 1.5, 
+     cex.lab = 1.2, 
+     cex.axis = 1)
+```
+
+```{r}
+# save a version not inversed
+diabete_data <- data_bad_MH
+```
+
+**1: Check correlations**
+
+Reverse variables 0/1 to align: 1--"bad"  0--"good", except sex, age, edu, income
+
+```{r}
+# for these vars, 0 -> 1, 1 -> 0 to align healthy/unhealthy implications
+reversed_vars <- c("PhysActivity", "Fruits", "Veggies", "CholCheck", "AnyHealthcare")
+data_bad_MH[reversed_vars] <- lapply(data_bad_MH[reversed_vars], function(x) 1 - x)
+```
+
+Reversed variables: 
+
+CholCheck:
+1 = no cholesterol check in 5 years; 0 = yes cholesterol check in 5 years
+
+PhysActivity:
+physical activity in past 30 days - not including job 1 = no 0 = yes
+
+Fruits
+Consume Fruit 1 or more times per day 1 = no 0 = yes
+
+Veggies
+Consume Vegetables 1 or more times per day 1 = no 0 = yes
+
+AnyHealthcare
+Have any kind of health care coverage, including health insurance, prepaid plans such as HMO, etc. 1 = no 0 = yes
+
+```{r}
+library(corrplot)
+cor_matrix <- cor(data[, setdiff(names(data), c("Sex", "Age", "Education", "Income"))])
+
+corrplot(cor_matrix, 
+         method = "color", 
+         type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45,  
+         tl.cex = 0.8)
+```
+
+```{r}
+excluded_vars <- c("Sex", "Age", "Education", "Income")
+data_for_corr <- data_bad_MH[, !(names(data_bad_MH) %in% excluded_vars)]
+
+# Calculate the correlation matrix
+cor_matrix <- cor(data_for_corr)
+
+# Print the correlation matrix
+print(cor_matrix)
+```
+
+```{r}
+threshold <- 0.3
+large_corr <- which(abs(cor_matrix) > threshold, arr.ind = TRUE)
+
+large_corr <- large_corr[large_corr[, 1] != large_corr[, 2], ]
+large_corr <- large_corr[!duplicated(t(apply(large_corr, 1, sort))), ]
+
+# Ones with large correlations
+
+large_corr_values <- data.frame(
+  Variable1 = rownames(cor_matrix)[large_corr[, 1]],
+  Variable2 = colnames(cor_matrix)[large_corr[, 2]],
+  Correlation = cor_matrix[large_corr]
+)
+print(large_corr_values)
+```
+
+Only moderate correlations, General Health large correlations make sense. Difficulty Walking and Physical Health also makes sense, and one is self-report the other is 0/1. We can keep all. (This is for if we didn't filter by mental health)
+
+Consider removing PhysHlth or GenHlth
+
+**2. VIF**
+
+```{r}
+library(car)
+
+# Try different response variables for health: 
+vif_model1 <- lm(Diabetes_012 ~ ., data = data_bad_MH)
+vif_model2 <- lm(BMI ~ ., data = data_bad_MH)
+vif_model3 <- lm(GenHlth ~ ., data = data_bad_MH)
+
+# Calculate VIF values for each predictor
+vif_values1 <- vif(vif_model1)
+vif_values2 <- vif(vif_model2)
+vif_values3 <- vif(vif_model3)
+
+vif_values1
+vif_values2
+vif_values3
+
+any(vif_values1 > 2|vif_values2 > 2|vif_values3 > 2)
+```
+
+Collinearity is not an issue. 
+
+
+**3. Factor Analysis (Optional)**
+
+```{r}
+library(psych)
+
+excluded_vars <- c("Diabetes_012", "Sex", "Age", "Education", "Income")
+data_for_fa <- data_bad_MH[, !(names(data_bad_MH) %in% excluded_vars)]
+
+# Check suitability of the data for factor analysis
+# Bartlett’s test and KMO test
+cortest.bartlett(data_for_fa) # Bartlett's test for sphericity
+KMO(data_for_fa)             # Kaiser-Meyer-Olkin measure of sampling adequacy
+
+# Determine the number of factors using a scree plot
+fa.parallel(data_for_fa, fa = "fa", n.iter = 100) # Parallel analysis
+
+# Perform Exploratory Factor Analysis (EFA)
+# Choose the number of factors based on parallel analysis or eigenvalues > 1
+num_factors <- 3 # Replace this with the chosen number of factors
+efa_result <- fa(data_for_fa, nfactors = num_factors, rotate = "varimax")
+
+# View factor loadings
+print(efa_result$loadings, cutoff = 0.3) # Loadings above 0.3 are highlighted
+
+# Visualize the factor structure
+fa.diagram(efa_result)
+```
+
+```{r}
+factor_scores <- factor.scores(data_for_fa, efa_result, method = "regression")
+
+scores <- factor_scores$scores
+
+# Add the factor scores back to the original dataset
+data_bad_MH <- cbind(data_bad_MH, scores)
+
+head(scores)
+```
+
+```{r}
+# Extract the factor loadings
+factor_loadings <- efa_result$loadings
+
+# Convert factor loadings to a data frame for easier handling
+factor_loadings_df <- as.data.frame.matrix(factor_loadings)
+
+# Set a cutoff to determine significant loadings (e.g., 0.3)
+loading_cutoff <- 0.3
+
+# Identify variables associated with each factor
+MR1_vars <- rownames(factor_loadings_df[abs(factor_loadings_df[, "MR1"]) > loading_cutoff, ])
+MR2_vars <- rownames(factor_loadings_df[abs(factor_loadings_df[, "MR2"]) > loading_cutoff, ])
+MR3_vars <- rownames(factor_loadings_df[abs(factor_loadings_df[, "MR3"]) > loading_cutoff, ])
+
+# Print the variables associated with each factor
+cat("Variables for MR1 (Health indicators, self-reports):\n", paste(MR1_vars, collapse = ", "), "\n\n")
+cat("Variables for MR2 (Health Behaviors/Diet):\n", paste(MR2_vars, collapse = ", "), "\n\n")
+cat("Variables for MR3 (Healthcare):\n", paste(MR3_vars, collapse = ", "), "\n\n")
+```
+
+filter:
+1. Low mental health + no healthcare 
+
+identifier: 
+2. Education + Income + ... (other variables not in model)
+
+
+```{r}
+data_no_HC <- data |> 
+  filter(AnyHealthcare == 1) |> 
+  select(-AnyHealthcare)# Compare with having HC
+
+data_HC <- data |> 
+  filter(AnyHealthcare == 0) |> 
+  select(-AnyHealthcare)
+```
+
+
+Repeat for data_no_HC: 
+
+```{r}
+library(psych)
+
+excluded_vars <- c("Diabetes_012", "Sex", "Age", "Education", "Income")
+data_for_fa_no_HC <- data_no_HC[, !(names(data_no_HC) %in% excluded_vars)]
+
+# Check suitability of the data for factor analysis
+# Bartlett’s test and KMO test
+cortest.bartlett(data_for_fa_no_HC) # Bartlett's test for sphericity
+KMO(data_for_fa_no_HC)             # Kaiser-Meyer-Olkin measure of sampling adequacy
+
+# Determine the number of factors using a scree plot
+fa.parallel(data_for_fa_no_HC, fa = "fa", n.iter = 100) # Parallel analysis
+
+# Perform Exploratory Factor Analysis (EFA)
+# Choose the number of factors based on parallel analysis or eigenvalues > 1
+num_factors <- 3 # Replace this with the chosen number of factors
+efa_result_no_HC <- fa(data_for_fa_no_HC, nfactors = num_factors, rotate = "varimax")
+
+# View factor loadings
+print(efa_result_no_HC$loadings, cutoff = 0.3) # Loadings above 0.3 are highlighted
+
+# Visualize the factor structure
+fa.diagram(efa_result_no_HC)
+```
+
+```{r}
+# Extract the factor loadings
+factor_loadings_no_HC <- efa_result_no_HC$loadings
+
+# Convert factor loadings to a data frame for easier handling
+factor_loadings_df_no_HC <- as.data.frame.matrix(factor_loadings_no_HC)
+
+# Set a cutoff to determine significant loadings (e.g., 0.3)
+loading_cutoff_no_HC <- 0.4
+
+# Identify variables associated with each factor
+MR1_vars_no_HC <- rownames(factor_loadings_df_no_HC[abs(factor_loadings_df_no_HC[, "MR1"]) > loading_cutoff_no_HC, ])
+MR2_vars_no_HC <- rownames(factor_loadings_df_no_HC[abs(factor_loadings_df_no_HC[, "MR2"]) > loading_cutoff_no_HC, ])
+MR3_vars_no_HC <- rownames(factor_loadings_df_no_HC[abs(factor_loadings_df_no_HC[, "MR3"]) > loading_cutoff_no_HC, ])
+
+# Print the variables associated with each factor
+cat("Variables for MR1_no_HC (Health indicators, self-reports):\n", paste(MR1_vars_no_HC, collapse = ", "), "\n\n")
+cat("Variables for MR2_no_HC (Health Behaviors/Diet):\n", paste(MR2_vars_no_HC, collapse = ", "), "\n\n")
+cat("Variables for MR3_no_HC (Healthcare):\n", paste(MR3_vars_no_HC, collapse = ", "), "\n\n")
+```
+
+
+Repeat for data_HC
+
+
+```{r}
+library(psych)
+
+excluded_vars <- c("Diabetes_012", "Sex", "Age", "Education", "Income")
+data_for_fa_HC <- data_HC[, !(names(data_HC) %in% excluded_vars)]
+
+# Check suitability of the data for factor analysis
+# Bartlett’s test and KMO test
+cortest.bartlett(data_for_fa_HC) # Bartlett's test for sphericity
+KMO(data_for_fa_HC)             # Kaiser-Meyer-Olkin measure of sampling adequacy
+
+# Determine the number of factors using a scree plot
+fa.parallel(data_for_fa_HC, fa = "fa", n.iter = 100) # Parallel analysis
+
+# Perform Exploratory Factor Analysis (EFA)
+# Choose the number of factors based on parallel analysis or eigenvalues > 1
+num_factors_HC <- 3 # Replace this with the chosen number of factors
+efa_result_HC <- fa(data_for_fa_HC, nfactors = num_factors_HC, rotate = "varimax")
+
+# View factor loadings
+print(efa_result_HC$loadings, cutoff = 0.3) # Loadings above 0.3 are highlighted
+
+# Visualize the factor structure
+fa.diagram(efa_result_HC)
+```
+
+
+```{r}
+# Extract the factor loadings
+factor_loadings_HC <- efa_result_HC$loadings
+
+# Convert factor loadings to a data frame for easier handling
+factor_loadings_df_HC <- as.data.frame.matrix(factor_loadings_HC)
+
+# Set a cutoff to determine significant loadings (e.g., 0.3)
+loading_cutoff_HC <- 0.4
+
+# Identify variables associated with each factor
+MR1_vars_HC <- rownames(factor_loadings_df_HC[abs(factor_loadings_df_HC[, "MR1"]) > loading_cutoff_no_HC, ])
+MR2_vars_HC <- rownames(factor_loadings_df_HC[abs(factor_loadings_df_HC[, "MR2"]) > loading_cutoff_no_HC, ])
+MR3_vars_HC <- rownames(factor_loadings_df_HC[abs(factor_loadings_df_HC[, "MR3"]) > loading_cutoff_no_HC, ])
+
+# Print the variables associated with each factor
+cat("Variables for MR1_HC (Health indicators, self-reports):\n", paste(MR1_vars_HC, collapse = ", "), "\n\n")
+cat("Variables for MR2_HC (Health Behaviors/Diet):\n", paste(MR2_vars_HC, collapse = ", "), "\n\n")
+cat("Variables for MR3_HC (Healthcare):\n", paste(MR3_vars_HC, collapse = ", "), "\n\n")
+```
+
