@@ -1,4 +1,4 @@
-# Finite Mixture Modeling for the Extraction of Latent Health Profiles in the BRFSS Diabetes Health Indicators dataset
+# How Do Mental Health and Healthcare Access Shape Diabetes Risk? A Study of Understudied Populations Using Latent Profiles and Survival Analysis
 
 
 Dataset: https://www.kaggle.com/datasets/alexteboul/diabetes-health-indicators-dataset
