@@ -15,7 +15,8 @@ data_HC <- data_bad_MH |>
 ```
 
 ```{r}
-# test 1: HC
+# test 2: no HC
+# Note: Change the data for different tests (i.e. HC and no HC)
 
 
 # Load library
@@ -53,6 +54,8 @@ summary(lca_model)
 
 
 ```{r}
+# PCA, already ran this, no further need for now
+
 # Load necessary libraries
 library(ggplot2)
 
