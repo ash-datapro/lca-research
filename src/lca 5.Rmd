@@ -16,6 +16,7 @@ data_HC <- data_bad_MH |>
 
 ```{r}
 # test 1: HC
+# LCA
 
 
 # Load library
@@ -56,6 +57,9 @@ summary(lca_model)
 
 
 ```{r}
+# Factor Analysis instead of PCA
+
+
 # Load necessary libraries
 library(psych)  # For factor analysis functions
 
@@ -109,6 +113,10 @@ fa.diagram(fa_result)
 
 
 ```{r}
+# Survival Analysis
+# Note: Scope is yet to be defined; work in progress.
+
+
 # Load necessary libraries
 library(survival)
 library(survminer)
