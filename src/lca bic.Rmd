@@ -1,3 +1,5 @@
+## This version is for bic only. Is now obselete.
+
 ```{r}
 data <- read.csv("diabetes_012_health_indicators_BRFSS2015.csv")
 
@@ -20,7 +22,7 @@ library(poLCA)
 
 # Load the data
 # Note: Change the dataset for different tests (i.e. HC and no HC)
-data <- data_bad_MH
+data <- data_no_hc
 
 # Select variables for LCA (categorical or ordinal variables only)
 lca_data <- data[, c("HighBP", "HighChol", "Smoker", "Stroke", 
