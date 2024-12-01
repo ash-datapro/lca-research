@@ -1,0 +1,210 @@
+```{r}
+setwd("/Users/joeli/Desktop")
+data <- read.csv("diabetes_012_health_indicators_BRFSS2015.csv")
+
+library(dplyr)
+data_bad_MH <- data |> 
+  filter(MentHlth > 15) # Focus on groups with poor mental health
+
+data_no_HC <- data_bad_MH |> 
+  filter(AnyHealthcare == 0) |>  # Filter no healthcare
+  select(-AnyHealthcare)
+```
+
+
+```{r}
+# Load necessary libraries
+library(psych)  # For factor analysis functions
+
+# new data
+data2 <- data_no_HC
+
+# for these vars, 0 -> 1, 1 -> 0 to align healthy/unhealthy implications
+reversed_vars <- c("PhysActivity", "Fruits", "Veggies", "CholCheck")
+data2[reversed_vars] <- lapply(data2[reversed_vars], function(x) 1 - x)
+
+# Binning process
+data2$BMI <- ifelse(data2$BMI >= 18 & data2$BMI <= 25, 0, 1)
+data2$GenHlth <- ifelse(data2$GenHlth %in% 1:3, 0, 1)
+data2$PhysHlth <- ifelse(data2$PhysHlth < 15, 0, 1)
+
+# Exclude specific columns
+excluded_columns <- c("MentHlth", "Sex", "Age", "Income", "Education","Diabetes_012","HeartDiseaseorAttack", "NoDocbcCost")
+## Also excluding heart disease because it's too straightforward to healthy/unhealthy, and creates a new factor of 0.9 in FA, excluding NoDocbcCost because we already filter by no healthcare
+
+selected_columns <- setdiff(colnames(data2), excluded_columns)
+data_selected <- data2[, selected_columns]
+
+# Check for missing values and handle them (if necessary)
+# Example: Replace missing values with the mean
+data_selected <- data.frame(lapply(data_selected, function(x) {
+  if (is.numeric(x)) {
+    x[is.na(x)] <- mean(x, na.rm = TRUE)
+  }
+  return(x)
+}))
+
+# Assess the suitability of the data for factor analysis
+# Bartlett's test of sphericity and KMO measure of sampling adequacy
+bartlett_result <- cortest.bartlett(cor(data_selected), n = nrow(data_selected))
+kmo_result <- KMO(cor(data_selected))
+
+cat("Bartlett's Test of Sphericity:\n")
+print(bartlett_result)
+
+cat("\nKMO Measure of Sampling Adequacy:\n")
+print(kmo_result)
+
+# Run factor analysis
+# Specify the number of factors (e.g., 3) and the rotation method (e.g., varimax)
+fa_result <- fa(data_selected, nfactors = 4, rotate = "varimax")
+#"Parallel analysis suggests that the number of factors =  5  and the number of components =  NA"
+
+# View the factor analysis results
+print(fa_result)
+
+# Scree plot for number of factors
+fa.parallel(data_selected, fa = "fa")
+
+# Visualize factor loadings
+fa.diagram(fa_result)
+
+```
+
+
+```{r}
+# Load library
+library(poLCA)
+
+# new data
+data2 <- data_no_HC
+
+# Binning process
+data2$BMI <- ifelse(data2$BMI >= 18 & data2$BMI <= 25, 0, 1)
+data2$GenHlth <- ifelse(data2$GenHlth %in% 1:3, 0, 1)
+data2$PhysHlth <- ifelse(data2$PhysHlth < 15, 0, 1)
+
+# Exclude specific columns
+excluded_columns <- c("MentHlth", "Sex", "Age", "Income", "Education","Diabetes_012","HeartDiseaseorAttack", "NoDocbcCost")
+
+# Select variables for LCA (categorical or ordinal variables only)
+selected_columns <- setdiff(colnames(data2), excluded_columns)
+lca_data <- data2[, selected_columns]
+
+# Ensure all variables are treated as factors
+lca_data <- lapply(lca_data, as.factor)
+lca_data <- as.data.frame(lca_data)
+```
+
+```{r}
+### BIC choose best classes for LCA from 1-7
+set.seed(123)
+results <- list()
+bic_values <- c()
+for (k in 1:7) {
+  lca_model <- poLCA(cbind(HighBP,HighChol,CholCheck,BMI,Smoker,Stroke,PhysActivity,Fruits,Veggies,HvyAlcoholConsump,GenHlth,PhysHlth,DiffWalk) ~ 1, 
+                     data = lca_data, nclass = k, maxiter = 1000, 
+                     nrep = 10, verbose = FALSE)
+  results[[k]] <- lca_model
+  bic_values <- c(bic_values, lca_model$bic)
+}
+# Plot BIC values to determine the optimal number of classes
+plot(1:7, bic_values, type = "b", xlab = "Number of Classes", ylab = "BIC", 
+     main = "Model Selection using BIC") # OPTIMAL: 4
+
+bic_values # OPTIMAL: 4
+```
+
+
+```{r}
+# Run LCA for 4 classes
+set.seed(123)
+optimal_classes <- 4
+lca_model <- poLCA(cbind(HighBP, HighChol, CholCheck, Smoker, Stroke,
+                         PhysActivity, Fruits, Veggies, HvyAlcoholConsump, 
+                         GenHlth, DiffWalk, BMI, PhysHlth) ~ 1, 
+                   data = lca_data, nclass = optimal_classes, 
+                   maxiter = 1000, nrep = 10, verbose = TRUE)
+
+# Summarize the model
+summary(lca_model)
+```
+
+
+
+
+```{r}
+# Extract posterior probabilities for each individual
+posterior_probs <- lca_model$posterior
+
+# Assign individuals to the most likely class
+# Create a new column `AssignedClass` in the dataset
+lca_data$AssignedClass <- apply(posterior_probs, 1, which.max)
+
+# Filter dataset for a specific class, e.g., Class 1
+class_1_data <- lca_data[lca_data$AssignedClass == 1, ]
+
+# Filter for Class 2
+class_2_data <- lca_data[lca_data$AssignedClass == 2, ]
+
+class_3_data <- lca_data[lca_data$AssignedClass == 3, ]
+
+class_4_data <- lca_data[lca_data$AssignedClass == 4, ]
+#####
+#####class_5_data <- lca_data[lca_data$AssignedClass == 5, ]
+
+
+```
+
+```{r}
+# Assign individuals to the most likely class
+lca_data$AssignedClass <- apply(lca_model$posterior, 1, which.max)
+
+# Add the Diabetes_012 column back to the LCA dataset
+# Ensure data2 and lca_data align properly (row order should match)
+lca_data$Diabetes_012 <- data2$Diabetes_012
+
+# Calculate proportions of Diabetes_012 categories within each class
+library(dplyr)
+
+diabetes_proportions <- lca_data %>%
+  group_by(AssignedClass) %>%
+  summarise(
+    NoDiabetes = round(mean(Diabetes_012 == 0, na.rm = TRUE), 3),
+    PreDiabetes = round(mean(Diabetes_012 == 1, na.rm = TRUE), 3),
+    Diabetes = round(mean(Diabetes_012 == 2, na.rm = TRUE), 3)
+  )
+
+# View the proportions for each class
+print(diabetes_proportions)
+```
+
+
+
+
+```{r}
+# Ensure AssignedClass and Diabetes_012 columns are available
+lca_data$AssignedClass <- apply(lca_model$posterior, 1, which.max)
+lca_data$Diabetes_012 <- data2$Diabetes_012
+
+# Chi-Square Test for independence between AssignedClass and Diabetes_012
+# Create a contingency table
+contingency_table <- table(lca_data$AssignedClass, lca_data$Diabetes_012)
+
+# Perform Chi-Square Test
+chi_sq_result <- chisq.test(contingency_table)
+print("Chi-Square Test Results:")
+print(chi_sq_result)
+
+# ANOVA to compare means of Diabetes_012 across classes
+anova_result <- aov(Diabetes_012 ~ as.factor(AssignedClass), data = lca_data)
+print("ANOVA Test Results:")
+summary(anova_result)
+
+```
+
+
+
+
+
+
