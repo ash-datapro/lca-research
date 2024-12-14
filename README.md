@@ -3,3 +3,4 @@
 
 Dataset: https://www.kaggle.com/datasets/alexteboul/diabetes-health-indicators-dataset
 
+Research Summary: ![Preview](./path/to/yourfile.png)
